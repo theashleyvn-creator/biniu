@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>The Ashley · 3D messages (vertical + smooth color)</title>
+<style>
+  html,body{height:100%;margin:0;background:#000;overflow:hidden;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  #hud{position:fixed;left:12px;top:12px;z-index:20;display:flex;gap:8px;align-items:center}
+  #toggle{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:10px;padding:8px 10px;font-size:13px}
+  #panel{position:fixed;left:12px;top:48px;width:min(92vw,460px);background:rgba(12,12,12,.85);
+         border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(8px);color:#eee;border-radius:14px;padding:12px;z-index:19;display:none}
+  #panel label{display:block;font-size:12px;margin:6px 0 4px;color:#bbb}
+  #panel textarea{width:100%;height:72px;border-radius:10px;border:1px solid rgba(255,255,255,.18);
+                  background:#0b0b0b;color:#fff;padding:8px;font-size:13px;resize:vertical}
+  #panel input{width:100%;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:#0b0b0b;color:#fff;padding:8px;font-size:13px}
+  #row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  #row3{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  #apply{margin-top:8px;width:100%;padding:10px;border-radius:12px;border:0;background:#6b8cff;color:#fff;font-weight:600}
+  #info{position:fixed;right:10px;bottom:10px;color:#bbb;font-size:11px;z-index:10;opacity:.85}
+</style>
+</head>
+<body>
+<div id="hud"><button id="toggle">⚙️ Tùy chỉnh</button></div>
+
+<div id="panel">
+  <label>Nội dung (ngăn cách bằng <b>|</b>)</label>
+  <textarea id="messages">Anh yêu Bin nhiều lắm|20/10/2023|Happi ani hmd luv bin|Bên nhau thêm 1 triệu năm nữa nhé</textarea>
+
+  <div id="row">
+    <div>
+      <label>Số text (50–400)</label>
+      <input id="ntext" type="number" min="50" max="400" value="160"/>
+    </div>
+    <div>
+      <label>Số trái tim (10–150)</label>
+      <input id="nheart" type="number" min="10" max="150" value="60"/>
+    </div>
+  </div>
+
+  <div id="row3">
+    <div>
+      <label>Tốc độ chữ (0.005–0.2)</label>
+      <input id="speedText" type="number" step="0.005" min="0.005" max="0.2" value="0.05"/>
+    </div>
+    <div>
+      <label>Tốc độ tim (0.005–0.2)</label>
+      <input id="speedHeart" type="number" step="0.005" min="0.005" max="0.2" value="0.05"/>
+    </div>
+  </div>
+
+  <label>Chu kỳ đổi màu (giây, càng lớn càng chậm & mượt)</label>
+  <input id="cycleSec" type="number" min="10" max="120" value="40"/>
+
+  <button id="apply">Cập nhật</button>
+</div>
+
+<div id="info">The Ashley · 3D messages (offline)</div>
+
+<script>
+/* ===== Mini WebGL (no CDN) ===== */
+class Vec3{constructor(x=0,y=0,z=0){this.x=x;this.y=y;this.z=z}set(x,y,z){this.x=x;this.y=y;this.z=z;return this}add(v){this.x+=v.x;this.y+=v.y;this.z+=v.z;return this}multiplyScalar(s){this.x*=s;this.y*=s;this.z*=s;return this}length(){return Math.hypot(this.x,this.y,this.z)}clone(){return new Vec3(this.x,this.y,this.z)}}
+const canvas=document.createElement('canvas');const gl=canvas.getContext('webgl',{antialias:true,alpha:false});
+document.body.appendChild(canvas);
+function resize(){const w=innerWidth,h=innerHeight; const px=Math.min(devicePixelRatio,2); canvas.width=Math.floor(w*px); canvas.height=Math.floor(h*px); canvas.style.width=w+'px'; canvas.style.height=h+'px';}
+resize(); addEventListener('resize',resize,{passive:true});
+
+function perspective(out,fovy,aspect,near,far){const f=1/Math.tan(fovy/2);out[0]=f/aspect;out[1]=0;out[2]=0;out[3]=0;out[4]=0;out[5]=f;out[6]=0;out[7]=0;out[8]=0;out[9]=0;out[10]=(far+near)/(near-far);out[11]=-1;out[12]=0;out[13]=0;out[14]=(2*far*near)/(near-far);out[15]=0;return out}
+function lookAt(out,eye,center,up){let x0,x1,x2,y0,y1,y2,z0,z1,z2;z0=eye.x-center.x;z1=eye.y-center.y;z2=eye.z-center.z;let len=Math.hypot(z0,z1,z2)||1;z0/=len;z1/=len;z2/=len;x0=up.y*z2-up.z*z1;x1=up.z*z0-up.x*z2;x2=up.x*z1-up.y*z0;len=Math.hypot(x0,x1,x2)||1;x0/=len;x1/=len;x2/=len;y0=z1*x2-z2*x1;y1=z2*x0-z0*x2;y2=z0*x1-z1*x0;out[0]=x0;out[1]=y0;out[2]=z0;out[3]=0;out[4]=x1;out[5]=y1;out[6]=z1;out[7]=0;out[8]=x2;out[9]=y2;out[10]=z2;out[11]=0;out[12]=-(x0*eye.x+x1*eye.y+x2*eye.z);out[13]=-(y0*eye.x+y1*eye.y+y2*eye.z);out[14]=-(z0*eye.x+z1*eye.y+z2*eye.z);out[15]=1;return out}
+
+const VSH=`attribute vec3 position; attribute vec2 uv; uniform mat4 uProj,uView,uModel; varying vec2 vUV; void main(){ vUV=uv; gl_Position=uProj*uView*uModel*vec4(position,1.0);} `;
+const FSH=`precision mediump float; varying vec2 vUV; uniform sampler2D map; uniform float opacity; uniform vec3 tint;
+void main(){ vec4 c=texture2D(map,vec2(vUV.x,1.0-vUV.y)); gl_FragColor=vec4(c.rgb * tint, c.a*opacity); }`;
+function shader(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw gl.getShaderInfoLog(s);return s}
+function program(vs,fs){const p=gl.createProgram();gl.attachShader(p,shader(gl.VERTEX_SHADER,vs));gl.attachShader(p,shader(gl.FRAGMENT_SHADER,fs));gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw gl.getProgramInfoLog(p);return p}
+const PROG=program(VSH,FSH); gl.useProgram(PROG);
+
+const quad=new Float32Array([-1,-1,0,0,0, 1,-1,0,1,0, -1,1,0,0,1, 1,1,0,1,1]);
+const vbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vbo); gl.bufferData(gl.ARRAY_BUFFER,quad,gl.STATIC_DRAW);
+const aPos=gl.getAttribLocation(PROG,'position'), aUV=gl.getAttribLocation(PROG,'uv');
+gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,20,0);
+gl.enableVertexAttribArray(aUV);  gl.vertexAttribPointer(aUV,2,gl.FLOAT,false,20,12);
+const uProj=gl.getUniformLocation(PROG,'uProj'), uView=gl.getUniformLocation(PROG,'uView'), uModel=gl.getUniformLocation(PROG,'uModel'), uMap=gl.getUniformLocation(PROG,'map'), uOpacity=gl.getUniformLocation(PROG,'opacity'), uTint=gl.getUniformLocation(PROG,'tint');
+gl.uniform1i(uMap,0);
+
+const PROJ=new Float32Array(16), VIEW=new Float32Array(16);
+let camTarget=new Vec3(0,0,0); let dist=95, minD=25, maxD=260; let rotX=0, rotY=0;
+function updateView(){lookAt(VIEW,new Vec3(camTarget.x+dist*Math.cos(rotY)*Math.cos(rotX),camTarget.y+dist*Math.sin(rotY),camTarget.z+dist*Math.cos(rotY)*Math.sin(rotX)),camTarget,new Vec3(0,1,0)); perspective(PROJ,65*Math.PI/180,canvas.width/canvas.height,0.1,1000); gl.uniformMatrix4fv(uProj,false,PROJ); gl.uniformMatrix4fv(uView,false,VIEW)}
+updateView();
+
+/* Controls */
+let dragging=false,lx=0,ly=0,touches=[];
+canvas.addEventListener('mousedown',e=>{dragging=true;lx=e.clientX;ly=e.clientY;});
+addEventListener('mouseup',()=>dragging=false);
+addEventListener('mousemove',e=>{if(!dragging)return; const dx=e.clientX-lx,dy=e.clientY-ly; rotX+=dx*0.005; rotY+=-dy*0.005; rotY=Math.max(-1.55,Math.min(1.55,rotY)); lx=e.clientX; ly=e.clientY; updateView();});
+canvas.addEventListener('wheel',e=>{dist*=(1+Math.sign(e.deltaY)*0.08); dist=Math.max(minD,Math.min(maxD,dist)); updateView();},{passive:true});
+
+/* ===== Textures ===== */
+function nextPow2(n){let p=1;while(p<n)p<<=1;return p;}
+function makeTexture(draw,sizeW,sizeH,useMipmap=true){
+  const c=document.createElement('canvas'); c.width=sizeW; c.height=sizeH;
+  const ctx=c.getContext('2d'); draw(ctx,sizeW,sizeH);
+  const tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  if(useMipmap){ gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); gl.generateMipmap(gl.TEXTURE_2D); }
+  else{ gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); }
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  return tex;
+}
+function neonTextTexture(str){ // base trắng để tint mượt bằng shader
+  const tmp=document.createElement('canvas'); const m=tmp.getContext('2d');
+  let fontSize=96; const pad=28; m.font=`${fontSize}px Arial, Helvetica, sans-serif`;
+  let w=m.measureText(str).width;
+  const MAX=1024;
+  if(w+2*pad>MAX){const ratio=(MAX-2*pad)/w; fontSize=Math.max(32,Math.floor(fontSize*ratio)); m.font=`${fontSize}px Arial, Helvetica, sans-serif`; w=m.measureText(str).width;}
+  const cw=nextPow2(Math.min(MAX,Math.ceil(w+2*pad)));
+  const ch=nextPow2(Math.min(MAX,Math.ceil(fontSize+2*pad)));
+  const aspect=cw/ch;
+  const tex=makeTexture((ctx,W,H)=>{
+    ctx.clearRect(0,0,W,H);
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.font=`${fontSize}px Arial, Helvetica, sans-serif`;
+    // glow trắng trước, lên shader sẽ tint cả glow
+    ctx.shadowColor="#ffffff"; ctx.shadowBlur=Math.floor(H*0.18);
+    ctx.fillStyle="#ffffff"; ctx.fillText(str,W/2,H/2);
+    // chút stroke mờ tăng nét
+    ctx.lineWidth=Math.max(1, Math.floor(H*0.012));
+    ctx.strokeStyle="rgba(255,255,255,0.18)";
+    ctx.strokeText(str,W/2,H/2);
+  }, cw, ch, true);
+  return {tex, aspect};
+}
+function heartTexture(color="#ff6a6f"){
+  const S=256;
+  return makeTexture((ctx,W,H)=>{
+    ctx.clearRect(0,0,W,H); ctx.fillStyle=color; ctx.shadowColor=color; ctx.shadowBlur=S*0.10;
+    const w=W,h=H,x=w/2,y=h*0.38,r=w*0.18;
+    ctx.beginPath(); ctx.moveTo(x,y);
+    ctx.bezierCurveTo(x+r,y-r,x+0.5*w,y+0.1*h,x,y+0.52*h);
+    ctx.bezierCurveTo(x-0.5*w,y+0.1*h,x-r,y-r,x,y);
+    ctx.fill();
+  }, S, S, true);
+}
+const heartTex=heartTexture();
+
+/* ===== Scene ===== */
+const texts=[], hearts=[], stars=[];
+const SPACE_R = 90, SPAWN_Y = 120, FLOOR_Y = -120;
+
+function randXYInDisk(R){
+  const th=Math.random()*Math.PI*2, r=R*Math.sqrt(Math.random());
+  return {x:r*Math.cos(th), z:r*Math.sin(th)};
+}
+(function(){
+  for(let i=0;i<1200;i++){
+    const xy=randXYInDisk(420); const y=(Math.random()*2-1)*420;
+    stars.push({pos:new Vec3(xy.x,y,xy.z), size:.5+Math.random()*1.1, opacity:.28+Math.random()*0.2});
+  }
+})();
+
+function drawSprite(tex,pos,size,opacity,aspect=1, tint=[1,1,1]){
+  gl.uniform1f(uOpacity, opacity);
+  gl.uniform3f(uTint, tint[0],tint[1],tint[2]);
+  const m=new Float32Array(16);
+  m[0]=VIEW[0];  m[1]=VIEW[4];  m[2]=VIEW[8];  m[3]=0;
+  m[4]=VIEW[1];  m[5]=VIEW[5];  m[6]=VIEW[9];  m[7]=0;
+  m[8]=VIEW[2];  m[9]=VIEW[6];  m[10]=VIEW[10];m[11]=0;
+  m[12]=pos.x;   m[13]=pos.y;   m[14]=pos.z;   m[15]=1;
+  const sx=size*aspect, sy=size;
+  m[0]*=sx; m[1]*=sx; m[2]*=sx;
+  m[4]*=sy; m[5]*=sy; m[6]*=sy;
+  gl.uniformMatrix4fv(uModel,false,m);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,tex);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+}
+
+/* Smooth color cycle (lerp chậm & êm) */
+const colorSetsHex = ['#FFFFFF','#FF8AD9','#FFB7C5']; // trắng → hồng → đỏ nhạt
+function hex2rgb(h){const n=parseInt(h.replace('#',''),16);return [(n>>16&255)/255, (n>>8&255)/255, (n&255)/255];}
+const colorSets = colorSetsHex.map(hex2rgb);
+let CYCLE_MS = 40000; // mặc định 40s để chuyển cực mượt
+function ease(t){return t*t*(3-2*t);} // smoothstep
+function mix(a,b,t){return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];}
+function currentTint(now){
+  const total = colorSets.length;
+  const phase = (now % (CYCLE_MS*total)) / CYCLE_MS; // [0..total)
+  const i = Math.floor(phase) % total;
+  const j = (i+1)%total;
+  const k = ease(phase - Math.floor(phase)); // 0..1 mượt
+  return mix(colorSets[i], colorSets[j], k);
+}
+
+/* Populate */
+const cacheTex = new Map();
+function getTex(msg){
+  if(cacheTex.has(msg)) return cacheTex.get(msg);
+  const t=neonTextTexture(msg);
+  cacheTex.set(msg,t); return t;
+}
+
+function populate(opts){
+  const {messages,nText,nHeart,speedText,speedHeart} = opts;
+  texts.length=0; hearts.length=0;
+
+  for(let i=0;i<nText;i++){
+    const msg = messages[i%messages.length];
+    const {x,z}=randXYInDisk(SPACE_R);
+    const y = (Math.random()*2-1)*SPACE_R;
+    const info = getTex(msg);
+    const speed = speedText*(0.9+Math.random()*0.2); // chênh rất nhỏ
+    texts.push({
+      pos:new Vec3(x,y,z),
+      vel:new Vec3(0,-speed,0),  // RƠI THUẦN DỌC
+      size:3.0+Math.random()*1.4,
+      tex:info.tex, aspect:info.aspect, opacity:0.95
+    });
+  }
+  for(let i=0;i<nHeart;i++){
+    const {x,z}=randXYInDisk(SPACE_R*0.9);
+    const y = (Math.random()*2-1)*SPACE_R;
+    const speed = speedHeart*(0.9+Math.random()*0.2);
+    hearts.push({
+      pos:new Vec3(x,y,z),
+      vel:new Vec3(0,-speed,0),
+      size:1.6+Math.random()*1.8,
+      tex:heartTex, opacity:0.9
+    });
+  }
+}
+
+/* UI */
+const $=id=>document.getElementById(id);
+const $toggle=$('toggle'),$panel=$('panel'),$messages=$('messages'),$ntext=$('ntext'),$nheart=$('nheart');
+const $speedText=$('speedText'), $speedHeart=$('speedHeart'), $cycleSec=$('cycleSec'), $apply=$('apply');
+$toggle.onclick=()=>{$panel.style.display=($panel.style.display==='none'||!$panel.style.display)?'block':'none';};
+
+function getOpts(){
+  const msgs=$messages.value.split('|').map(s=>s.trim()).filter(Boolean);
+  const nt=Math.min(400,Math.max(50, +$ntext.value||220));
+  const nh=Math.min(150,Math.max(10, +$nheart.value||60));
+  const st=Math.min(0.2,Math.max(0.005, +$speedText.value||0.01));
+  const sh=Math.min(0.2,Math.max(0.005, +$speedHeart.value||0.02));
+  CYCLE_MS = Math.min(120000, Math.max(10000, (+$cycleSec.value||40)*1000));
+  return {messages:msgs.length?msgs:['Yêu anh'], nText:nt, nHeart:nh, speedText:st, speedHeart:sh};
+}
+populate(getOpts());
+$apply.onclick=()=>{populate(getOpts());};
+
+/* Render loop */
+gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+const clockStart=performance.now();
+
+function loop(){
+  requestAnimationFrame(loop);
+  const now = performance.now();
+  const tint = currentTint(now); // màu hiện tại (đã lerp mượt)
+
+  // auto-rotate nhẹ
+ updateView();
+
+  gl.viewport(0,0,canvas.width,canvas.height);
+  gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT);
+
+  // sao lấp lánh (không tint)
+  for(const s of stars){ drawSprite(heartTex,s.pos,s.size*0.18,s.opacity,1,[1,1,1]); }
+
+  // chữ
+  for(const o of texts){
+    o.pos.add(o.vel);
+    if(o.pos.y < -120) o.pos.y = 120;
+    drawSprite(o.tex,o.pos,o.size,o.opacity,o.aspect,tint);
+  }
+
+  // tim (giữ màu hồng gốc)
+  for(const o of hearts){
+    o.pos.add(o.vel);
+    if(o.pos.y < -120) o.pos.y = 120;
+    drawSprite(o.tex,o.pos,o.size,o.opacity,1,[1,1,1]);
+  }
+}
+loop();
+</script>
+</body>
+</html>
